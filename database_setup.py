@@ -16,36 +16,88 @@ def initialize_daily_table(engine):
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;")
 
 
-def drop_daily_table(engine, inspector):
-    if inspector.has_table('daily'):
-        engine.execute("DROP TABLE daily;")
+def drop_table(engine, inspector, table_name):
+    if inspector.has_table(table_name):
+        engine.execute(f"DROP TABLE {table_name};")
 
 def read_csvs_into_daily(engine, inspector):
     data_dir = os.getcwd()+'\\data'
 
-    for filename in os.listdir(data_dir):
+    if not inspector.has_table('daily'):
+        initialize_daily_table(engine)    
+
+    aggregate_df = None
+    for i, filename in enumerate(os.listdir(data_dir)):
         if filename[-3:] != 'csv':
             continue
 
         file_path = os.path.join(data_dir, filename)
+        
         df = pd.read_csv(file_path)
         df.date = df.date.astype('datetime64[D]')
         df.drop(columns=['changeOverTime', 'label'], inplace=True)
         df['ticker'] = filename.split('_')[0].upper()
+        df.replace([np.inf, -np.inf], np.nan, inplace=True)
+        df = df.dropna()
 
-        small_types = {'open': np.float32, 'high': np.float32, 'low': np.float32, 'close': np.float32, 'adjClose': np.float32,
-                        'volume': np.int32, 'unadjustedVolume': np.int32, 'change': np.float32, 'changePercent': np.float32,
-                        'vwap': np.float32}
+        if aggregate_df is None:
+            aggregate_df = df.copy()
+        else:
+            aggregate_df = aggregate_df.append(df)
+        
+        if df.shape[0] < 10:
+            continue
 
-        df = df.astype(small_types)
+        if i % 100 == 0:
+            aggregate_df.to_sql('temp_table', con=engine, if_exists='replace', index=False)
+            aggregate_df = None
+            print(str(i))
+            engine.execute('INSERT IGNORE INTO daily SELECT * FROM temp_table;')
+            engine.execute("DROP TABLE temp_table;")
 
-        if not inspector.has_table('daily'):
-            initialize_daily_table(engine)    
-
-        df.to_sql('temp_table', con=engine, if_exists='replace', index=False)
-        engine.execute('INSERT IGNORE INTO daily SELECT * FROM temp_table')
-
+    aggregate_df.to_sql('temp_table', con=engine, if_exists='replace', index=False)
+    print(str(i))
+    engine.execute('INSERT IGNORE INTO daily SELECT * FROM temp_table;')
     engine.execute("DROP TABLE temp_table;")
+
+    
+def initialize_tickers_table(engine):
+    engine.execute("CREATE TABLE `tickers` (\n\
+    `ticker` VARCHAR(20) PRIMARY KEY,\n\
+    `exchange` text NOT NULL\n\
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;")
+
+
+def read_csv_into_tickers(engine, inspector):
+    if not inspector.has_table('tickers'):
+        initialize_tickers_table(engine)  
+
+    data_dir = os.getcwd() +'\\data\\tickers'
+
+    for filename in os.listdir(data_dir):
+        if filename[-3:] != 'csv':
+            continue
+        
+        file_path = os.path.join(data_dir, filename)        
+        rawdata = open(file_path, 'rb').read()
+        encoding = chardet.detect(rawdata)['encoding']
+        df = pd.read_csv(file_path, encoding=encoding)
+        df = df.drop(columns=['name', 'price', 'exchange'])
+        df = df.rename(columns={'symbol': 'ticker', 'exchangeShortName': 'exchange'})
+        df = df[df['exchange'].isin(['NYSE', 'NASDAQ', 'ETF'])]
+
+        df.to_sql('temp_ticker_table', con=engine, if_exists='replace', index=False)
+        engine.execute('INSERT IGNORE INTO tickers SELECT * FROM temp_ticker_table;')
+        engine.execute("DROP TABLE temp_ticker_table;")
+
+
+def download_all_ticker_csv_files(engine, inspector):
+    if inspector.has_table('tickers'):
+        tickers = engine.execute("SELECT ticker from tickers").fetchall()
+        tickers = [t[0] for t in tickers]
+
+        for ticker in tickers:
+            fmp.pull_daily_change_and_volume_csv(ticker)
 
 
 if __name__ == '__main__':
@@ -54,6 +106,8 @@ if __name__ == '__main__':
     import numpy as np
     import os
     import sys
+    import chardet
+    import fmpcloud_interface as fmp    
 
     engine = sqla.create_engine('mysql+pymysql://user:user@localhost:3306/stock_data', echo=False)    
     inspector = sqla.inspect(engine)
@@ -68,7 +122,7 @@ if __name__ == '__main__':
             print("Read data csv files into the Daily table.")
             exit()
         elif sys.argv[1] == 'reset':
-            drop_daily_table(engine, inspector)
+            drop_table(engine, inspector, 'daily')
             print("Dropped daily table.")
             initialize_daily_table(engine)
             print("Created daily table.")
@@ -76,15 +130,16 @@ if __name__ == '__main__':
             print("Read data csv files into the Daily table.")            
             exit()
         elif sys.argv[1] == 'drop':
-            drop_daily_table(engine, inspector)
+            drop_table(engine, inspector, 'daily')
             print("Dropped daily table.")
             exit()
         else:
             print("Unknown argument!")
             exit()
-    else:
-        drop_daily_table(engine, inspector)
-        initialize_daily_table(engine)
-        read_csvs_into_daily(engine, inspector)
 
+    #download_all_ticker_csv_files(engine, inspector)
+    #drop_table(engine, inspector, 'daily')
+    # drop_table(engine, inspector, 'tickers')
+    read_csvs_into_daily(engine, inspector)
+        
     

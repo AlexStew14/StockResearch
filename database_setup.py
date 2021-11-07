@@ -95,10 +95,15 @@ def download_all_ticker_csv_files(engine, inspector):
     if inspector.has_table('tickers'):
         tickers = engine.execute("SELECT ticker from tickers").fetchall()
         tickers = [t[0] for t in tickers]
+        fmp.pull_daily_change_and_volume_csv(tickers)
 
-        for ticker in tickers:
-            fmp.pull_daily_change_and_volume_csv(ticker)
 
+def download_all_ticker_ratios_csvs(engine, inspector):
+    if inspector.has_table('tickers'):
+        tickers = engine.execute("SELECT ticker from tickers").fetchall()
+        tickers = [t[0] for t in tickers]
+
+        fmp.pull_quarterly_financial_ratios(tickers)
 
 if __name__ == '__main__':
     import pandas as pd
@@ -137,9 +142,5 @@ if __name__ == '__main__':
             print("Unknown argument!")
             exit()
 
-    #download_all_ticker_csv_files(engine, inspector)
-    #drop_table(engine, inspector, 'daily')
-    # drop_table(engine, inspector, 'tickers')
-    read_csvs_into_daily(engine, inspector)
-        
+    download_all_ticker_ratios_csvs(engine, inspector)    
     

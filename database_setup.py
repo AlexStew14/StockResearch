@@ -16,6 +16,13 @@ def initialize_daily_table(engine):
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;")
 
 
+def initialize_tickers_table(engine):
+    engine.execute("CREATE TABLE `tickers` (\n\
+    `ticker` VARCHAR(20) PRIMARY KEY,\n\
+    `exchange` text NOT NULL\n\
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;")
+
+
 def drop_table(engine, inspector, table_name):
     if inspector.has_table(table_name):
         engine.execute(f"DROP TABLE {table_name};")
@@ -61,12 +68,6 @@ def read_csvs_into_daily(engine, inspector):
     engine.execute("DROP TABLE temp_table;")
 
     
-def initialize_tickers_table(engine):
-    engine.execute("CREATE TABLE `tickers` (\n\
-    `ticker` VARCHAR(20) PRIMARY KEY,\n\
-    `exchange` text NOT NULL\n\
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;")
-
 
 def read_csv_into_tickers(engine, inspector):
     if not inspector.has_table('tickers'):
@@ -89,21 +90,16 @@ def read_csv_into_tickers(engine, inspector):
         df.to_sql('temp_ticker_table', con=engine, if_exists='replace', index=False)
         engine.execute('INSERT IGNORE INTO tickers SELECT * FROM temp_ticker_table;')
         engine.execute("DROP TABLE temp_ticker_table;")
+  
 
-
-def download_all_ticker_csv_files(engine, inspector):
-    if inspector.has_table('tickers'):
-        tickers = engine.execute("SELECT ticker from tickers").fetchall()
-        tickers = [t[0] for t in tickers]
-        fmp.pull_daily_change_and_volume_csv(tickers)
-
-
-def download_all_ticker_ratios_csvs(engine, inspector):
+def download_all_stock_csvs(engine, inspector, csv_type='ratios'):
     if inspector.has_table('tickers'):
         tickers = engine.execute("SELECT ticker from tickers").fetchall()
         tickers = [t[0] for t in tickers]
 
-        fmp.pull_quarterly_financial_ratios(tickers)
+        data_interface = fmp.FMPCloudInterface(tickers)
+        data_interface.pull_data(csv_type)     
+
 
 if __name__ == '__main__':
     import pandas as pd
@@ -117,30 +113,6 @@ if __name__ == '__main__':
     engine = sqla.create_engine('mysql+pymysql://user:user@localhost:3306/stock_data', echo=False)    
     inspector = sqla.inspect(engine)
 
-    if len(sys.argv) > 1:
-        if sys.argv[1] == 'init':
-            initialize_daily_table(engine)
-            print("daily table sucessfully created.")
-            exit()
-        elif sys.argv[1] == 'read':
-            read_csvs_into_daily(engine, inspector)
-            print("Read data csv files into the Daily table.")
-            exit()
-        elif sys.argv[1] == 'reset':
-            drop_table(engine, inspector, 'daily')
-            print("Dropped daily table.")
-            initialize_daily_table(engine)
-            print("Created daily table.")
-            read_csvs_into_daily(engine, inspector)
-            print("Read data csv files into the Daily table.")            
-            exit()
-        elif sys.argv[1] == 'drop':
-            drop_table(engine, inspector, 'daily')
-            print("Dropped daily table.")
-            exit()
-        else:
-            print("Unknown argument!")
-            exit()
 
-    download_all_ticker_ratios_csvs(engine, inspector)    
+ 
     

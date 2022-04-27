@@ -1,8 +1,6 @@
-import re
+
 import pandas as pd
 import sqlalchemy as sqla
-import numpy as np
-from sqlalchemy import engine
 
 
 class DatabaseLibrary:
@@ -11,7 +9,7 @@ class DatabaseLibrary:
         self.inspector = sqla.inspect(self.engine)
 
         
-    def get_rows(self, table_name, tickers, date_begin=None, date_end=None):
+    def get_rows_by_tickers(self, table_name, tickers, date_begin=None, date_end=None):
         if not self.inspector.has_table(table_name):
             raise Exception('table_name not found in the database.')
 
@@ -23,7 +21,22 @@ class DatabaseLibrary:
             date_end = "'" + date_end + "'"
             query += f" and date >= {date_begin} and date <= {date_end}"
 
-        query += " order by ticker,date asc"
+        query += " order by ticker,date asc;"
+
+        query_obj = self.engine.execute(query)
+
+        column_names = list(query_obj.keys())
+        res_list = query_obj.fetchall()
+        
+        res_df = pd.DataFrame(res_list, columns=column_names)
+        return res_df
+
+    def get_rows_by_days(self, table_name, starting_date, last_days=5):
+        # date format: 'YYYY-MM-DD'
+        if not self.inspector.has_table(table_name):
+            raise Exception('table_name not found in the database.')
+
+        query = f"SELECT * FROM {table_name} WHERE date >= DATE_SUB(date('{starting_date}'), INTERVAL {last_days} DAY);"
 
         query_obj = self.engine.execute(query)
 

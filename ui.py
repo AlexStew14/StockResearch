@@ -11,7 +11,7 @@ VALID_TICKERS = set(pd.read_csv("data/tickers/all_tradable_symbols.csv", encodin
 class Main_UI():
 
     def __init__(self):
-        self.backtester = Backtester(periods=[1, 5, 10, 30], using_tkinter=True)
+        self.backtester = Backtester(periods=[1, 5, 10, 20, 30], using_tkinter=True)
 
         self.root = Tk()
         self.root.protocol("WM_DELETE_WINDOW", self.root.quit)
@@ -31,20 +31,24 @@ class Main_UI():
         self.selected_ticker = ""
 
         self.supported_strategies_dict = {"RSI Long/Short": rsi_strategy, "MA CrossOver": ma_crossover_strategy, "MACD": None}
-
         self.selected_strategy_string = StringVar(self.root)        
-
         self.strategy_option_menu = OptionMenu(self.root, self.selected_strategy_string, "Select Strategy", *list(self.supported_strategies_dict.keys()), command=self.strategy_selected_event)        
-        self.strategy_option_menu.pack()        
+        self.strategy_option_menu.pack()     
 
         self.strategy_params_canvas = Canvas(self.root, bg="gray")        
         self.strategy_params_canvas.pack()
+
+        self.supported_plots_dict = {'Horizontal Plot': self.backtester.plot_results, 'Detailed Plot': self.backtester.plot_detailed_results, 'Timed Plot': self.backtester.plot_timed_results}
+        self.selected_plot_string = StringVar(self.root)
+        self.plot_selection_menu = OptionMenu(self.root, self.selected_plot_string, "Select Plot", *list(self.supported_plots_dict.keys()), command=self.plot_selected_event)
+        self.plot_selection_menu.pack()
+        self.plot_method = None
 
         self.selected_strategy_params_dict = {}
 
         self.submit_strategy_button = Button(self.root, text="Submit Strategy", command=self.submit_strategy_event)
         self.submit_strategy_button.pack()
-        
+
         self.plot_canvas = Canvas(self.root, width=1280, height=720)
         self.plot_canvas.pack(side=TOP, fill=BOTH, expand=1)        
         self.main_figure = None
@@ -71,6 +75,12 @@ class Main_UI():
 
         self.update_strategy_params_canvas()
 
+
+    def plot_selected_event(self, *args):
+        plot_string = args[0]
+        self.plot_method = self.supported_plots_dict[plot_string]        
+        self.submit_strategy_event()
+        
 
     def update_strategy_params_canvas(self):
         for child in self.strategy_params_canvas.winfo_children():
@@ -106,7 +116,11 @@ class Main_UI():
                 
         pipeline = BacktestPipeline(**{'method': self.supported_strategies_dict[selected_strategy], 'params': self.selected_strategy_params_dict})
 
-        figure = self.backtester.plot_results(self.selected_ticker, pipeline)
+        if self.plot_method is None:
+            self.status_text.config(text = "NO PLOT SELECTED")
+            return None
+
+        figure = self.plot_method(self.selected_ticker, pipeline)
 
         if self.main_figure is not None:
             self.plot_canvas.winfo_children()[0].destroy()

@@ -8,44 +8,34 @@ def rsi_strategy(stock_df, **kwargs):
     if not all(param in kwargs for param in params):
         return None        
     
-    signals = np.zeros(stock_df.shape[0])
+    long_signals, short_signals = np.zeros(stock_df.shape[0]), np.zeros(stock_df.shape[0])
     rsi_series = RSIIndicator(stock_df['close']).rsi()
-    signals[rsi_series < kwargs['buy_level']] = 1
-    signals[rsi_series > kwargs['short_level']] = -1
-    return signals
+    long_signals[rsi_series < kwargs['buy_level']] = 1
+    short_signals[rsi_series > kwargs['short_level']] = 1
+    return long_signals, short_signals
 
 
-# Chooses buy and short indices randomly to be used for comparison
 def baseline_strategy(stock_df, **kwargs):
-    params = BACKTEST_STRATEGY_PARAMS[baseline_strategy]
-    if not all(param in kwargs for param in params):
-        return None    
-
-    signals = np.zeros(stock_df.shape[0])
-    buy_indices = np.random.choice(stock_df.shape[0], kwargs["sample_count"], replace=False)
-    short_indices = np.random.choice(stock_df.shape[0], kwargs["sample_count"], replace=False)
-    signals[buy_indices] = 1
-    signals[short_indices] = -1
-    return signals
+    long_signals, short_signals = np.ones(stock_df.shape[0]), np.ones(stock_df.shape[0])
+    return long_signals, short_signals
 
 def ma_crossover_strategy(stock_df, **kwargs):
     params = BACKTEST_STRATEGY_PARAMS[ma_crossover_strategy]
     if not all(param in kwargs for param in params):
         return None    
     
-    signals = np.zeros(stock_df.shape[0])
-    # fast_ma_series = stock_df['close'].rolling(kwargs['fast_ma']).mean()
-    # slow_ma_series = stock_df['close'].rolling(kwargs['slow_ma']).mean()
+    long_signals, short_signals = np.zeros(stock_df.shape[0]), np.zeros(stock_df.shape[0])
+
     fast_ma_series = SMAIndicator(stock_df['close'], kwargs['fast_ma']).sma_indicator()
     slow_ma_series = SMAIndicator(stock_df['close'], kwargs['slow_ma']).sma_indicator()
-    signals[(fast_ma_series > slow_ma_series) & (fast_ma_series.shift(1) < slow_ma_series.shift(1))] = 1
-    signals[(fast_ma_series < slow_ma_series) & (fast_ma_series.shift(1) > slow_ma_series.shift(1))] = -1    
-    return signals
+    long_signals[(fast_ma_series > slow_ma_series) & (fast_ma_series.shift(1) < slow_ma_series.shift(1))] = 1
+    short_signals[(fast_ma_series < slow_ma_series) & (fast_ma_series.shift(1) > slow_ma_series.shift(1))] = 1    
+    return long_signals, short_signals
 
 
 BACKTEST_STRATEGY_PARAMS = {
     rsi_strategy: ['buy_level', 'short_level'],
-    baseline_strategy: ['sample_count'],
+    baseline_strategy: [],
     ma_crossover_strategy: ['fast_ma', 'slow_ma']
 }
 
